@@ -4,7 +4,7 @@
   "plugins": [
     {
       "name": "usage-band",
-      "source": "./mod/usage-band",
+      "source": "./band/usage-band",
       "description": "Band above the prompt: context bar, session token totals, CNY cost"
     }
   ]
