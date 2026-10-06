@@ -1,37 +1,52 @@
 # claude-statusline
 
-Claude Code 底部状态栏：上下文进度条 + 会话累计 token（输入/缓存/输出）+ 人民币费用。
+Claude Code 用量显示，两种形态显示同样的信息，**二选一**：
 
 ```
-glm-5.3-flash │ ██░░░░░░░░░░░░ 17% 34.2k/200k │ in 1.2M (cached 1.1M) │ out 45.3k │ ¥0.85
+glm-5.3-flash │ ██░░░░░░░░░░░░ 17% 34.2k/200k │ in 1.2M (cached 1.1M) │ out 45.3k │ ¥0.85 10-07 21:30
 ```
 
-- 进度条：<50% 绿、<80% 黄、≥80% 红
-- 费用按 `statusline.cjs` 顶部 `PRICES` 表计算（¥/百万 tokens），deepseek 按高峰时段（周一至五 9–12、14–18）自动切换两档价
-- 表外模型：美元估算 × `USD_CNY`（默认 7.2）
+- 上下文进度条：<50% 绿、<80% 黄、≥80% 红
+- 会话累计 token：输入（含缓存写入）/ 缓存命中 / 输出
+- 费用按 `PRICES` 表算（¥/百万 tokens），deepseek 按高峰时段（周一至五 9–12、14–18）自动切换两档价；表外模型按美元估算 × `USD_CNY`（默认 7.2）兜底
+- 每次交互结束刷新一次，无后台定时器
+
+| | A. 底部状态栏 | B. Band mod |
+|---|---|---|
+| 位置 | 终端最底部一行 | 输入框上方一行 |
+| 安装 | `bash install.sh` | `bash install-mod.sh` |
+| 原理 | 原生 `statusLine` 设置 + Node 脚本 | Claude Code 插件（来自本仓库 marketplace） |
+| 依赖 | Node.js | Node.js + Claude Code v2.1.286+ |
+
+两个安装脚本都会自动移除另一种形态，随时切换、重复运行即更新。
 
 ## 安装
 
-需要 Node.js。Mac / Linux / Windows(Git Bash)：
-
 ```bash
+# A. 底部状态栏
 bash install.sh
+
+# B. Band mod（装完重启 Claude Code）
+bash install-mod.sh
 ```
 
-或者发布到 GitHub 后一行安装：
+或者不克隆仓库，直接远程装（先 `curl -fsSL <raw-url>/install.sh -o install.sh` 再跑也行；mod 版需要仓库在本地）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Miaoge-Ge/claude-statusline/main/install.sh | bash
+git clone https://github.com/Miaoge-Ge/claude-statusline && cd claude-statusline
+bash install.sh        # 或 bash install-mod.sh
 ```
 
-## 卸载
+## 卸载 / 切换
 
-删掉 `~/.claude/statusline.cjs`，并从 `~/.claude/settings.json` 移除 `"statusLine"`。
+```bash
+# A → 卸载：删 settings.json 里的 "statusLine"（或直接跑 B 的安装脚本完成切换）
+# B → 卸载：claude plugin uninstall usage-band（或直接跑 A 的安装脚本完成切换）
+```
 
 ## 自定义
 
-全部在 `statusline.cjs` 顶部：
+- **A**：`statusline.cjs` 顶部 —— `PRICES`（加模型/改价，格式 `[缓存命中, 输入, 输出]`，分时段的写成 `peak => peak ? [...] : [...]`）、`USD_CNY` 汇率、进度条宽度 `W = 14` 和颜色阈值
+- **B**：`mod/usage-band/hooks/register.tsx` 顶部 —— 同一套 `PRICES` 表，两处改动记得同步
 
-- `PRICES`：加模型 / 改价格，格式 `[缓存命中价, 输入价, 输出价]`，deepseek 那种分时段的写成 `peak => peak ? [...] : [...]`
-- `USD_CNY`：表外模型的兜底汇率
-- 进度条宽度改 `W = 14`，颜色阈值改 `< 50 / < 80`
+改完 A 重跑 `bash install.sh`（或直接改 `~/.claude/statusline.cjs`）；B 在本仓库改完重跑 `bash install-mod.sh`。
