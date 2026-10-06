@@ -25,6 +25,9 @@ process.stdin.on('end', () => {
   const C = s => `\x1b[${s}m`, R = '\x1b[0m'
   const dim = t => C('90') + t + R
   const fmt = n => n >= 1e6 ? Number((n / 1e6).toFixed(1)) + 'M' : n >= 1e3 ? Number((n / 1e3).toFixed(1)) + 'k' : String(n)
+  const d = new Date()
+  const p2 = n => String(n).padStart(2, '0')
+  const now = `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`
 
   // context bar: input side (incl. cache) over the window, like /context
   const cw = j.context_window || {}
@@ -71,6 +74,7 @@ process.stdin.on('end', () => {
     dim('in ') + fmt(fresh + cacheWrite) + dim(' (cached ') + fmt(cacheRead) + dim(')'),
     dim('out ') + fmt(out),
     dim('¥') + (cost >= 1 ? cost.toFixed(2) : cost.toFixed(3)),
+    dim(now),
   ]
   process.stdout.write(parts.filter(Boolean).join(dim(' │ ')))
 })

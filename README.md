@@ -21,7 +21,7 @@ bash install.sh
 或者发布到 GitHub 后一行安装：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<你>/<repo>/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Miaoge-Ge/claude-statusline/main/install.sh | bash
 ```
 
 ## 卸载
