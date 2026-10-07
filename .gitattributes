@@ -1,0 +1,5 @@
+# Store text as LF in the repo; check it out with the platform's own endings.
+* text=auto
+
+# Shell scripts must be LF even in a Windows working tree, or bash sees the CR.
+*.sh text eol=lf
