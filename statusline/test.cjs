@@ -102,6 +102,29 @@ fs.appendFileSync(file, '\n')
 if (scan('partial') !== cold()) throw new Error('partial: the completed line was dropped or double-counted')
 console.log('ok a half-written line waits for its newline')
 
+// --- one API call, many transcript entries ------------------------------------
+// Claude Code writes an entry per content block and every block repeats the same
+// response's usage, so a reply with 9 blocks lands 9 times. Summing them all put
+// the cost ~2.5x too high, which is what these two checks exist to catch.
+const dupe = path.join(os.tmpdir(), 'statusline-test-dupe.jsonl')
+const call = (id, input, output) => JSON.stringify({
+  message: { id, usage: { input_tokens: input, output_tokens: output, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
+}) + '\n'
+const dupeScan = session => metrics(run({ model, transcript_path: dupe, session_id: 'test-dupe-' + session }))
+
+fs.writeFileSync(dupe, call('m1', 1e5, 1e3).repeat(3) + call('m2', 2e5, 2e3).repeat(2))
+const repeated = dupeScan('repeat')
+fs.writeFileSync(dupe, call('m1', 1e5, 1e3) + call('m2', 2e5, 2e3))
+if (repeated !== dupeScan('single')) throw new Error('a call repeated across content blocks was counted more than once')
+console.log('ok a call repeated across content blocks counts once')
+
+// and the dedup set has to survive the resume, or the tail of a call re-counts
+fs.writeFileSync(dupe, call('m3', 5e5, 5e3))
+dupeScan('resume') // caches the first block, ids=[m3]
+fs.appendFileSync(dupe, call('m3', 5e5, 5e3) + call('m3', 5e5, 5e3))
+if (dupeScan('resume') !== dupeScan('cold')) throw new Error('the dedup set was lost across an incremental resume')
+console.log('ok the dedup set survives an incremental resume')
+
 // --- the bar gives up width on a narrow terminal ------------------------------
 const wide_file = path.join(os.tmpdir(), 'statusline-test-wide.jsonl')
 fs.writeFileSync(wide_file, JSON.stringify({
@@ -124,5 +147,6 @@ console.log(`ok COLUMNS: ${wide.length} cols -> ${tight.length} cols, bar ${cell
 
 sweep()
 fs.unlinkSync(wide_file)
+fs.unlinkSync(dupe)
 fs.unlinkSync(file)
 fs.unlinkSync(t)

@@ -1,8 +1,8 @@
 // Claude Code status line: context progress bar + session token totals in ¥.
 // Reads statusline JSON on stdin; cumulative tokens and cost come from the
-// transcript JSONL (every assistant entry carries message.usage) -- nothing in
-// the statusline JSON reports session token totals, and `cost.total_cost_usd`
-// prices at Anthropic list rates, so it is wrong for every model in PRICES.
+// transcript JSONL -- nothing in the statusline JSON reports session token
+// totals, and `cost.total_cost_usd` prices at Anthropic list rates, so it is
+// wrong for every model in PRICES.
 // Prices: ¥/M tokens [cache-hit, cache-miss, output]; deepseek peak = Mon-Fri
 // 01:00-04:00 and 06:00-10:00 UTC. Add or edit models in PRICES below; a model
 // that is not listed shows no cost at all rather than a guessed one.
@@ -67,7 +67,7 @@ process.stdin.on('end', () => {
   // is node starting up, which nothing here can help. Anything suspicious -- no
   // cache, a shrunken file, a resume point that is not just past a newline -- falls
   // back to scanning the whole thing, because a wrong total is worse than a slow one.
-  let fresh = 0, cacheWrite = 0, cacheRead = 0, out = 0
+  let fresh = 0, cacheWrite = 0, cacheRead = 0, out = 0, seen = new Set()
   const tp = j.transcript_path
   const cache = path.join(os.tmpdir(), 'claude-statusline-' +
     String(j.session_id || 'nosession').replace(/[^\w-]/g, '') + '.json')
@@ -90,7 +90,8 @@ process.stdin.on('end', () => {
         (c.size < st.size || (c.size === st.size && c.mtime === st.mtimeMs))
       if (ok && onLineStart(fd, c.size)) {
         fresh = c.fresh; cacheWrite = c.cacheWrite; cacheRead = c.cacheRead; out = c.out
-        from = c.size
+        seen = new Set(c.ids || []) // the ids must survive the resume, or a later
+        from = c.size               // block of an already-counted call counts again
       }
     } catch {} // no cache yet
     const buf = Buffer.allocUnsafe(st.size - from)
@@ -106,16 +107,23 @@ process.stdin.on('end', () => {
       if (!line.includes('"usage"')) continue
       let o; try { o = JSON.parse(line) } catch { continue }
       const u = o && o.message && o.message.usage
-      if (u) {
-        fresh += u.input_tokens || 0
-        cacheWrite += u.cache_creation_input_tokens || 0
-        cacheRead += u.cache_read_input_tokens || 0
-        out += u.output_tokens || 0
+      if (!u) continue
+      // Claude Code writes one entry per content block, each repeating the same
+      // response's usage, so a reply with 9 blocks lands here 9 times. Count each
+      // API call once or every total, cost included, runs about 2.5x high.
+      const call = o.message.id
+      if (call) {
+        if (seen.has(call)) continue
+        seen.add(call)
       }
+      fresh += u.input_tokens || 0
+      cacheWrite += u.cache_creation_input_tokens || 0
+      cacheRead += u.cache_read_input_tokens || 0
+      out += u.output_tokens || 0
     }
     if (done) fs.writeFileSync(cache, JSON.stringify({
       path: tp, size: from + Buffer.byteLength(done), mtime,
-      fresh, cacheWrite, cacheRead, out,
+      fresh, cacheWrite, cacheRead, out, ids: [...seen],
     }))
   } catch {} // no transcript yet
 
