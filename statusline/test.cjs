@@ -40,10 +40,10 @@ for (const id of [...Object.keys(PRICES), 'deepseek-flash[1m]']) {
   console.log('ok', id, '¥' + yen[1])
 }
 
-if (/¥/.test(run({ model: { id: 'some-model-that-is-not-listed' }, transcript_path: t }))) {
-  throw new Error('an unlisted model rendered a cost')
-}
-console.log('ok unlisted model renders no cost')
+const unlisted = run({ model: { id: 'some-model-that-is-not-listed' }, transcript_path: t })
+if (/¥/.test(unlisted)) throw new Error('an unlisted model rendered a cost')
+if (!/some-model-that-is-not-listed\?/.test(unlisted)) throw new Error('an unpriced model is not flagged with ?')
+console.log('ok unlisted model renders no cost, and says so with ?')
 
 // --- incremental transcript cache --------------------------------------------
 // The scan resumes from a cached byte offset, so the ways it can go wrong are:
@@ -101,6 +101,14 @@ if (scan('partial') !== cold()) throw new Error('partial: counted a line before 
 fs.appendFileSync(file, '\n')
 if (scan('partial') !== cold()) throw new Error('partial: the completed line was dropped or double-counted')
 console.log('ok a half-written line waits for its newline')
+
+// a cache left by an older version holds totals this version would never produce
+const staleFile = path.join(os.tmpdir(), 'claude-statusline-test-stale.json')
+fs.writeFileSync(file, usage(1e5))
+const st = fs.statSync(file)
+fs.writeFileSync(staleFile, JSON.stringify({ path: file, size: st.size, mtime: st.mtimeMs, fresh: 9e8, cacheWrite: 0, cacheRead: 0, out: 9e8 }))
+if (scan('stale') !== cold()) throw new Error('a cache from an older version was trusted')
+console.log('ok a cache from an older version is ignored')
 
 // --- one API call, many transcript entries ------------------------------------
 // Claude Code writes an entry per content block and every block repeats the same

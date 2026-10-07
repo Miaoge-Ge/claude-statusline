@@ -71,6 +71,10 @@ process.stdin.on('end', () => {
   const tp = j.transcript_path
   const cache = path.join(os.tmpdir(), 'claude-statusline-' +
     String(j.session_id || 'nosession').replace(/[^\w-]/g, '') + '.json')
+  // Bump whenever the totals come to mean something different: an older cache
+  // holds numbers this version would never produce, and reusing them keeps the
+  // old error alive for the rest of the session.
+  const CACHE_V = 2
   const onLineStart = (fd, off) => {
     if (!off) return true
     const b = Buffer.alloc(1)
@@ -86,7 +90,7 @@ process.stdin.on('end', () => {
       // Same path, and either it grew (resume from the offset) or it is the same
       // file untouched (reuse as-is). Equal length with a newer mtime means it was
       // rewritten, so those totals are not ours.
-      const ok = c.path === tp &&
+      const ok = c.v === CACHE_V && c.path === tp &&
         (c.size < st.size || (c.size === st.size && c.mtime === st.mtimeMs))
       if (ok && onLineStart(fd, c.size)) {
         fresh = c.fresh; cacheWrite = c.cacheWrite; cacheRead = c.cacheRead; out = c.out
@@ -122,7 +126,7 @@ process.stdin.on('end', () => {
       out += u.output_tokens || 0
     }
     if (done) fs.writeFileSync(cache, JSON.stringify({
-      path: tp, size: from + Buffer.byteLength(done), mtime,
+      v: CACHE_V, path: tp, size: from + Buffer.byteLength(done), mtime,
       fresh, cacheWrite, cacheRead, out, ids: [...seen],
     }))
   } catch {} // no transcript yet
@@ -146,7 +150,8 @@ process.stdin.on('end', () => {
   // labels dim, values default-weight, the four things you actually look at
   // (model, bar, cost, clock) carry the colour
   const render = (w, detail) => [
-    C('1;36') + id + R,
+    // the ? says "no price for this id" -- without it a missing cost looks broken
+    C('1;36') + id + (cost === null ? '?' : '') + R,
     `${bar(w)} ${C('1;' + color)}${pct}%${R} ${dim(fmt(used) + '/' + fmt(win))}`,
     dim('in ') + bold(fmt(fresh + cacheWrite)) +
       (cacheRead && detail ? dim(' (cached ') + fmt(cacheRead) + dim(')') : ''),
