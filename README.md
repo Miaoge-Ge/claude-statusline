@@ -10,8 +10,8 @@ glm-5.3-flash │ ██░░░░░░░░░░░░ 17% 34.2k/200k │ 
 
 - Context progress bar: green under 50%, yellow under 80%, red at or above.
 - Session totals: input (including cache writes) / cache hits / output.
-- Cost in ¥ from the `PRICES` table (¥ per 1M tokens). DeepSeek has two rate tiers: peak is Mon–Fri 01:00–04:00 and 06:00–10:00 UTC, off-peak is exactly half. Models that are not in the table fall back to the client's own USD estimate × `USD_CNY` (default 7.2).
-- Model ids are matched literally, one row per id — only the `[1m]` context marker is stripped. A renamed id shows up as unpriced rather than quietly borrowing another model's rate.
+- Cost in ¥ from the `PRICES` table (¥ per 1M tokens). DeepSeek has two rate tiers: peak is Mon–Fri 01:00–04:00 and 06:00–10:00 UTC, off-peak is exactly half.
+- Model ids are matched literally, one row per id — only the `[1m]` context marker is stripped. A model that is not in the table shows **no cost at all**, rather than a guessed one; better nothing than a wrong number.
 - Redraws after every turn, plus once a minute so the clock stays current.
 
 ## Install
@@ -34,8 +34,11 @@ Delete `"statusLine"` from `~/.claude/settings.json` and remove `~/.claude/statu
 Edit the top of [statusline/statusline.cjs](statusline/statusline.cjs):
 
 - `PRICES` — `[cache-hit, cache-miss, output]` per 1M tokens. A row priced per time tier is written `peak => peak ? [...] : [...]`.
-- `USD_CNY` — the fallback conversion rate.
 - `W` — bar width, and the two colour thresholds just below it.
 - Refresh cadence lives in `~/.claude/settings.json` as `statusLine.refreshInterval`, in seconds.
 
 Then re-run `bash statusline/install.sh`, and `node statusline/test.cjs` to confirm every known model id still hits `PRICES`.
+
+## License
+
+[MIT](LICENSE)

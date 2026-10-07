@@ -1,6 +1,7 @@
-// node test.cjs -- every id that shows up in a transcript must hit PRICES.
-// A miss silently falls through to the client's own USD estimate, which is
-// exactly how the deepseek numbers went wrong: the ids never matched the table.
+// node test.cjs -- every id seen in a transcript must hit PRICES, and anything
+// else must render no cost at all. A missing row used to fall through to the
+// client's own USD estimate, which is how the deepseek numbers went wrong: the
+// ids never matched the table.
 const { execFileSync } = require('child_process')
 const fs = require('fs'), os = require('os'), path = require('path')
 
@@ -15,11 +16,17 @@ fs.writeFileSync(t, JSON.stringify({
   message: { usage: { input_tokens: 1e6, output_tokens: 1e6, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
 }) + '\n')
 
+const render = id => execFileSync(process.execPath, [path.join(__dirname, 'statusline.cjs')], {
+  input: JSON.stringify({ model: { id }, transcript_path: t }), encoding: 'utf8',
+}).replace(/\x1b\[[\d;]*m/g, '')
+
 for (const id of IDS) {
-  const out = execFileSync(process.execPath, [path.join(__dirname, 'statusline.cjs')], {
-    input: JSON.stringify({ model: { id }, transcript_path: t }), encoding: 'utf8',
-  })
-  const yen = Number(/¥([\d.]+)/.exec(out.replace(/\x1b\[[\d;]*m/g, ''))[1])
-  if (!(yen > 0)) throw new Error(`${id}: not priced, fell back to the client estimate`)
-  console.log('ok', id, '¥' + yen)
+  const yen = /¥([\d.]+)/.exec(render(id))
+  if (!yen || !(Number(yen[1]) > 0)) throw new Error(`${id}: not priced, no cost rendered`)
+  console.log('ok', id, '¥' + yen[1])
 }
+
+if (/¥/.test(render('some-model-that-is-not-listed'))) {
+  throw new Error('an unlisted model rendered a cost')
+}
+console.log('ok unlisted model renders no cost')

@@ -2,16 +2,17 @@
 // Reads statusline JSON on stdin; cumulative tokens and cost come from the
 // transcript JSONL (every assistant entry carries message.usage).
 // Prices: ¥/M tokens [cache-hit, cache-miss, output]; deepseek peak = Mon-Fri
-// 01:00-04:00 and 06:00-10:00 UTC. Add or edit models in PRICES below.
-// ponytail: reparses the whole transcript each run and uses a fixed 7.2 USD/CNY
-// rate for models not in PRICES; cache or reprice if that ever matters.
+// 01:00-04:00 and 06:00-10:00 UTC. Add or edit models in PRICES below; a model
+// that is not listed shows no cost at all rather than a guessed one.
+// ponytail: re-reads the whole transcript each run (~100 ms on a 16 MB one);
+// memoise it if that ever turns up in a profile.
 const fs = require('fs')
 
 // Ids are matched literally -- one row per model id, nothing is folded together.
 // A renamed id is meant to show up as unpriced, and test.cjs fails until you add
 // it here, rather than quietly using another model's rate.
-// DeepSeek rows are the published USD rates × USD_CNY: $0.006/$0.30/$1.20 per M
-// for Flash, $0.044/$1.32/$3.96 for V4-Pro, off-peak exactly half.
+// DeepSeek rows are the published USD rates × 7.2: $0.006/$0.30/$1.20 per M for
+// Flash, $0.044/$1.32/$3.96 for V4-Pro, off-peak exactly half.
 // ponytail: no Chinese-holiday calendar, so holidays are billed at peak rates here.
 const PRICES = {
   'deepseek-flash': peak => peak ? [0.0432, 2.16, 8.64] : [0.0216, 1.08, 4.32],
@@ -23,7 +24,6 @@ const PRICES = {
   'mimo-v2.6-pro': [0.025, 3, 6],
   'mimo-v2.6-flash': [0.02, 1, 2],
 }
-const USD_CNY = 7.2
 
 let raw = ''
 process.stdin.on('data', d => (raw += d))
@@ -63,22 +63,20 @@ process.stdin.on('end', () => {
     }
   } catch {} // no transcript yet
 
-  // cost in ¥: per-model price table, else the client's USD estimate converted.
-  // `id` and `display_name` can disagree, so try both; the only thing stripped is
-  // the [1m] context marker, which is not part of the model name.
+  // cost in ¥, or null when the model is not in PRICES -- an unlisted model shows
+  // no cost rather than a guessed one. `id` and `display_name` can disagree, so
+  // try both; the only thing stripped is the [1m] context marker.
   const m = j.model || {}
   const norm = s => (s || '').replace(/\[1m\]$/, '')
   const id = [m.id, m.display_name].map(norm).find(k => PRICES[k]) || norm(m.display_name || m.id)
   const p = PRICES[id]
-  let cost
+  let cost = null
   if (p) {
     // deepseek peak is defined in UTC, not local time
     const d = new Date(), h = d.getUTCHours(), day = d.getUTCDay()
     const peak = day >= 1 && day <= 5 && ((h >= 1 && h < 4) || (h >= 6 && h < 10))
     const [hit, inp, outp] = typeof p === 'function' ? p(peak) : p
     cost = ((fresh + cacheWrite) * inp + cacheRead * hit + out * outp) / 1e6
-  } else {
-    cost = ((j.cost && j.cost.total_cost_usd) || 0) * USD_CNY
   }
 
   const parts = [
@@ -86,7 +84,7 @@ process.stdin.on('end', () => {
     `${bar} ${C(color)}${pct}%${R} ${dim(fmt(used) + '/' + fmt(win))}`,
     dim('in ') + fmt(fresh + cacheWrite) + dim(' (cached ') + fmt(cacheRead) + dim(')'),
     dim('out ') + fmt(out),
-    dim('¥') + (cost >= 1 ? cost.toFixed(2) : cost.toFixed(3)),
+    cost === null ? '' : dim('¥') + (cost >= 1 ? cost.toFixed(2) : cost.toFixed(3)),
     dim(now),
   ]
   process.stdout.write(parts.filter(Boolean).join(dim(' │ ')))
