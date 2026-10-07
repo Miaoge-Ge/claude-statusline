@@ -1,7 +1,0 @@
-{
-  "name": "usage-band",
-  "version": "0.1.0",
-  "description": "Band above the prompt: context bar, session token totals, CNY cost",
-  "author": { "name": "Miaoge-Ge" },
-  "types": "./types/index.d.ts"
-}

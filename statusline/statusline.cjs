@@ -1,14 +1,19 @@
 // Claude Code status line: context progress bar + session token totals in ¥.
 // Reads statusline JSON on stdin; cumulative tokens and cost come from the
 // transcript JSONL (every assistant entry carries message.usage).
-// Prices: ¥/M tokens [cache-hit, input, output]; deepseek peak = Mon-Fri
-// 9-12/14-18. Add or edit models in PRICES below.
+// Prices: ¥/M tokens [cache-hit, cache-miss, output]; deepseek peak = Mon-Fri
+// 01:00-04:00 and 06:00-10:00 UTC. Add or edit models in PRICES below.
 // ponytail: reparses the whole transcript each run and uses a fixed 7.2 USD/CNY
 // rate for models not in PRICES; cache or reprice if that ever matters.
 const fs = require('fs')
 
+// deepseek peak rows are the published USD rates × USD_CNY: $0.006/$0.30/$1.20 per M
+// (deepseek-flash), $0.044/$1.32/$3.96 (v4-pro), off-peak exactly half.
+// ponytail: no Chinese-holiday calendar, so holidays are billed at peak rates here.
 const PRICES = {
-  'deepseek-v4.1-flash': peak => peak ? [0.04, 2, 8] : [0.02, 1, 4],
+  'deepseek-flash': peak => peak ? [0.0432, 2.16, 8.64] : [0.0216, 1.08, 4.32],
+  'deepseek-v4.1-flash': peak => peak ? [0.0432, 2.16, 8.64] : [0.0216, 1.08, 4.32],
+  'deepseek-v4-pro': peak => peak ? [0.3168, 9.504, 28.512] : [0.1584, 4.752, 14.256],
   'qwen3.8-flash': [0.1, 0.8, 2.7],
   'glm-5.3-flash': [0.23, 0.8, 2.8],
   'mimo-v2.6-pro': [0.025, 3, 6],
@@ -54,14 +59,18 @@ process.stdin.on('end', () => {
     }
   } catch {} // no transcript yet
 
-  // cost in ¥: per-model price table, else the client's USD estimate converted
-  const model = (j.model && (j.model.display_name || j.model.id)) || ''
-  const id = model.replace(/\[1m\]$/, '')
+  // cost in ¥: per-model price table, else the client's USD estimate converted.
+  // Look up id and display_name both, and drop DeepSeek's rotating name suffixes,
+  // otherwise a renamed model silently falls through to the client's estimate.
+  const m = j.model || {}
+  const norm = s => (s || '').replace(/\[1m\]$/, '').replace(/-expires-on-\d+$/, '')
+  const id = [m.id, m.display_name].map(norm).find(k => PRICES[k]) || norm(m.display_name || m.id)
   const p = PRICES[id]
   let cost
   if (p) {
-    const h = new Date().getHours(), day = new Date().getDay()
-    const peak = day >= 1 && day <= 5 && ((h >= 9 && h < 12) || (h >= 14 && h < 18))
+    // deepseek peak is defined in UTC, not local time
+    const d = new Date(), h = d.getUTCHours(), day = d.getUTCDay()
+    const peak = day >= 1 && day <= 5 && ((h >= 1 && h < 4) || (h >= 6 && h < 10))
     const [hit, inp, outp] = typeof p === 'function' ? p(peak) : p
     cost = ((fresh + cacheWrite) * inp + cacheRead * hit + out * outp) / 1e6
   } else {

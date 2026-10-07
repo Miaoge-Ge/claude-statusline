@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Install the statusline variant: copies statusline.cjs to ~/.claude/ and sets
 # statusLine in ~/.claude/settings.json. Requires Node.js. Re-run to update.
-# Removes the usage-band plugin if present, so the two variants don't double up.
 set -e
 command -v node >/dev/null || { echo "Please install Node.js first: https://nodejs.org"; exit 1; }
 
-claude plugin uninstall usage-band 2>/dev/null || true
+claude plugin uninstall usage-band 2>/dev/null || true # drop the old band variant
 
 DIR="$(dirname "$0")"
 mkdir -p "$HOME/.claude"
