@@ -4,8 +4,6 @@
 set -e
 command -v node >/dev/null || { echo "Please install Node.js first: https://nodejs.org"; exit 1; }
 
-claude plugin uninstall usage-band 2>/dev/null || true # drop the old band variant
-
 DIR="$(dirname "$0")"
 mkdir -p "$HOME/.claude"
 cp "$DIR/statusline.cjs" "$HOME/.claude/statusline.cjs"

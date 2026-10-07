@@ -1,16 +1,14 @@
 // node test.cjs -- every id seen in a transcript must hit PRICES, and anything
 // else must render no cost at all. A missing row used to fall through to the
 // client's own USD estimate, which is how the deepseek numbers went wrong: the
-// ids never matched the table.
+// ids never matched the table. The list is read out of PRICES, so a new row
+// cannot be added without being covered here.
 const { execFileSync } = require('child_process')
 const fs = require('fs'), os = require('os'), path = require('path')
+const { PRICES } = require('./statusline.cjs')
 
-const IDS = [
-  'deepseek-flash', 'deepseek-flash[1m]',
-  'deepseek-v4.1-flash',
-  'deepseek-v4.1-flash-expires-on-0910', 'deepseek-v4.1-flash-expires-on-0910[1m]',
-  'deepseek-v4-pro', 'glm-5.3-flash', 'qwen3.8-flash', 'mimo-v2.6-pro',
-]
+// every priced id, plus one [1m] case: that marker is stripped before lookup
+const IDS = [...Object.keys(PRICES), 'deepseek-flash[1m]']
 const t = path.join(os.tmpdir(), 'statusline-test.jsonl')
 fs.writeFileSync(t, JSON.stringify({
   message: { usage: { input_tokens: 1e6, output_tokens: 1e6, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },

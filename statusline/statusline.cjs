@@ -12,18 +12,24 @@ const fs = require('fs')
 // A renamed id is meant to show up as unpriced, and test.cjs fails until you add
 // it here, rather than quietly using another model's rate.
 // DeepSeek rows are the published USD rates × 7.2: $0.006/$0.30/$1.20 per M for
-// Flash, $0.044/$1.32/$3.96 for V4-Pro, off-peak exactly half.
+// Flash, $0.044/$1.32/$3.96 for V4-Pro, off-peak exactly half. The three Flash
+// ids are the same rates, so one function backs all three rows.
 // ponytail: no Chinese-holiday calendar, so holidays are billed at peak rates here.
+const DS_FLASH = peak => peak ? [0.0432, 2.16, 8.64] : [0.0216, 1.08, 4.32]
 const PRICES = {
-  'deepseek-flash': peak => peak ? [0.0432, 2.16, 8.64] : [0.0216, 1.08, 4.32],
-  'deepseek-v4.1-flash': peak => peak ? [0.0432, 2.16, 8.64] : [0.0216, 1.08, 4.32],
-  'deepseek-v4.1-flash-expires-on-0910': peak => peak ? [0.0432, 2.16, 8.64] : [0.0216, 1.08, 4.32],
+  'deepseek-flash': DS_FLASH,
+  'deepseek-v4.1-flash': DS_FLASH,
+  'deepseek-v4.1-flash-expires-on-0910': DS_FLASH,
   'deepseek-v4-pro': peak => peak ? [0.3168, 9.504, 28.512] : [0.1584, 4.752, 14.256],
   'qwen3.8-flash': [0.1, 0.8, 2.7],
   'glm-5.3-flash': [0.23, 0.8, 2.8],
   'mimo-v2.6-pro': [0.025, 3, 6],
   'mimo-v2.6-flash': [0.02, 1, 2],
 }
+
+// test.cjs requires this file to get the id list; run as a script it reads stdin.
+module.exports = { PRICES }
+if (require.main !== module) return
 
 let raw = ''
 process.stdin.on('data', d => (raw += d))
@@ -33,6 +39,7 @@ process.stdin.on('end', () => {
 
   const C = s => `\x1b[${s}m`, R = '\x1b[0m'
   const dim = t => C('90') + t + R
+  const bold = t => C('1') + t + R
   const fmt = n => n >= 1e6 ? Number((n / 1e6).toFixed(1)) + 'M' : n >= 1e3 ? Number((n / 1e3).toFixed(1)) + 'k' : String(n)
   const d = new Date()
   const p2 = n => String(n).padStart(2, '0')
@@ -51,7 +58,9 @@ process.stdin.on('end', () => {
   let fresh = 0, cacheWrite = 0, cacheRead = 0, out = 0
   try {
     for (const line of fs.readFileSync(j.transcript_path, 'utf8').split('\n')) {
-      if (!line.trim()) continue
+      // every entry with usage has the literal `"usage"`; skipping the rest first
+      // keeps JSON.parse off the user/tool/system lines, which are most of them
+      if (!line.includes('"usage"')) continue
       let o; try { o = JSON.parse(line) } catch { continue }
       const u = o && o.message && o.message.usage
       if (u) {
@@ -73,18 +82,20 @@ process.stdin.on('end', () => {
   let cost = null
   if (p) {
     // deepseek peak is defined in UTC, not local time
-    const d = new Date(), h = d.getUTCHours(), day = d.getUTCDay()
+    const h = d.getUTCHours(), day = d.getUTCDay()
     const peak = day >= 1 && day <= 5 && ((h >= 1 && h < 4) || (h >= 6 && h < 10))
     const [hit, inp, outp] = typeof p === 'function' ? p(peak) : p
     cost = ((fresh + cacheWrite) * inp + cacheRead * hit + out * outp) / 1e6
   }
 
+  // labels dim, values default-weight, the four things you actually look at
+  // (model, bar, cost, clock) carry the colour
   const parts = [
-    dim(id),
-    `${bar} ${C(color)}${pct}%${R} ${dim(fmt(used) + '/' + fmt(win))}`,
-    dim('in ') + fmt(fresh + cacheWrite) + dim(' (cached ') + fmt(cacheRead) + dim(')'),
-    dim('out ') + fmt(out),
-    cost === null ? '' : dim('¥') + (cost >= 1 ? cost.toFixed(2) : cost.toFixed(3)),
+    C('1;36') + id + R,
+    `${bar} ${C('1;' + color)}${pct}%${R} ${dim(fmt(used) + '/' + fmt(win))}`,
+    dim('in ') + bold(fmt(fresh + cacheWrite)) + dim(' (cached ') + fmt(cacheRead) + dim(')'),
+    dim('out ') + bold(fmt(out)),
+    cost === null ? '' : C('1;33') + '¥' + (cost >= 1 ? cost.toFixed(2) : cost.toFixed(3)) + R,
     dim(now),
   ]
   process.stdout.write(parts.filter(Boolean).join(dim(' │ ')))
