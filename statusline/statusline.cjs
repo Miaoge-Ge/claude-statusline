@@ -1,12 +1,12 @@
 // Claude Code status line: context progress bar + session token totals in ¥.
 // Reads statusline JSON on stdin; cumulative tokens and cost come from the
-// transcript JSONL (every assistant entry carries message.usage).
+// transcript JSONL (every assistant entry carries message.usage) -- nothing in
+// the statusline JSON reports session token totals, and `cost.total_cost_usd`
+// prices at Anthropic list rates, so it is wrong for every model in PRICES.
 // Prices: ¥/M tokens [cache-hit, cache-miss, output]; deepseek peak = Mon-Fri
 // 01:00-04:00 and 06:00-10:00 UTC. Add or edit models in PRICES below; a model
 // that is not listed shows no cost at all rather than a guessed one.
-// ponytail: re-reads the whole transcript each run (~100 ms on a 16 MB one);
-// memoise it if that ever turns up in a profile.
-const fs = require('fs')
+const fs = require('fs'), os = require('os'), path = require('path')
 
 // Ids are matched literally -- one row per model id, nothing is folded together.
 // A renamed id is meant to show up as unpriced, and test.cjs fails until you add
@@ -50,14 +50,57 @@ process.stdin.on('end', () => {
   const win = cw.context_window_size || 200000
   const used = cw.total_input_tokens || 0
   const pct = Math.min(100, Math.round((used / win) * 100))
-  const W = 14, fill = Math.round((pct / 100) * W)
   const color = pct < 50 ? '32' : pct < 80 ? '33' : '31'
-  const bar = C(color) + '█'.repeat(fill) + dim('░'.repeat(W - fill))
+
+  // Every cell splits into eighths, so the bar moves in ~0.9% steps, not 7%.
+  const MAXW = 14, EIGHTHS = '▏▎▍▌▋▊▉'
+  const bar = w => {
+    const e = Math.round((pct / 100) * w * 8), full = Math.floor(e / 8), eighth = e % 8
+    return C(color) + '█'.repeat(full) + (eighth ? EIGHTHS[eighth - 1] : '') + R
+      + dim('░'.repeat(Math.max(0, w - full - (eighth ? 1 : 0))))
+  }
 
   // session-cumulative: 输入 = fresh input (incl. cache writes), 缓存 = cache reads
+  // The transcript only ever grows, so the running totals and the byte offset they
+  // cover are cached per session and each run parses just the appended tail. On a
+  // 26 MB transcript the scan is ~26 ms of the ~80 ms a redraw costs; the other 54
+  // is node starting up, which nothing here can help. Anything suspicious -- no
+  // cache, a shrunken file, a resume point that is not just past a newline -- falls
+  // back to scanning the whole thing, because a wrong total is worse than a slow one.
   let fresh = 0, cacheWrite = 0, cacheRead = 0, out = 0
+  const tp = j.transcript_path
+  const cache = path.join(os.tmpdir(), 'claude-statusline-' +
+    String(j.session_id || 'nosession').replace(/[^\w-]/g, '') + '.json')
+  const onLineStart = (fd, off) => {
+    if (!off) return true
+    const b = Buffer.alloc(1)
+    fs.readSync(fd, b, 0, 1, off - 1)
+    return b[0] === 10 // '\n'
+  }
   try {
-    for (const line of fs.readFileSync(j.transcript_path, 'utf8').split('\n')) {
+    const fd = fs.openSync(tp, 'r')
+    const st = fs.fstatSync(fd)
+    let from = 0
+    try {
+      const c = JSON.parse(fs.readFileSync(cache, 'utf8'))
+      // Same path, and either it grew (resume from the offset) or it is the same
+      // file untouched (reuse as-is). Equal length with a newer mtime means it was
+      // rewritten, so those totals are not ours.
+      const ok = c.path === tp &&
+        (c.size < st.size || (c.size === st.size && c.mtime === st.mtimeMs))
+      if (ok && onLineStart(fd, c.size)) {
+        fresh = c.fresh; cacheWrite = c.cacheWrite; cacheRead = c.cacheRead; out = c.out
+        from = c.size
+      }
+    } catch {} // no cache yet
+    const buf = Buffer.allocUnsafe(st.size - from)
+    const n = fs.readSync(fd, buf, 0, buf.length, from)
+    const mtime = fs.fstatSync(fd).mtimeMs
+    fs.closeSync(fd)
+    const text = buf.toString('utf8', 0, n)
+    const nl = text.lastIndexOf('\n') // never consume a line still being written
+    const done = nl < 0 ? '' : text.slice(0, nl + 1)
+    for (const line of done.split('\n')) {
       // every entry with usage has the literal `"usage"`; skipping the rest first
       // keeps JSON.parse off the user/tool/system lines, which are most of them
       if (!line.includes('"usage"')) continue
@@ -70,6 +113,10 @@ process.stdin.on('end', () => {
         out += u.output_tokens || 0
       }
     }
+    if (done) fs.writeFileSync(cache, JSON.stringify({
+      path: tp, size: from + Buffer.byteLength(done), mtime,
+      fresh, cacheWrite, cacheRead, out,
+    }))
   } catch {} // no transcript yet
 
   // cost in ¥, or null when the model is not in PRICES -- an unlisted model shows
@@ -90,13 +137,26 @@ process.stdin.on('end', () => {
 
   // labels dim, values default-weight, the four things you actually look at
   // (model, bar, cost, clock) carry the colour
-  const parts = [
+  const render = (w, detail) => [
     C('1;36') + id + R,
-    `${bar} ${C('1;' + color)}${pct}%${R} ${dim(fmt(used) + '/' + fmt(win))}`,
-    dim('in ') + bold(fmt(fresh + cacheWrite)) + dim(' (cached ') + fmt(cacheRead) + dim(')'),
+    `${bar(w)} ${C('1;' + color)}${pct}%${R} ${dim(fmt(used) + '/' + fmt(win))}`,
+    dim('in ') + bold(fmt(fresh + cacheWrite)) +
+      (cacheRead && detail ? dim(' (cached ') + fmt(cacheRead) + dim(')') : ''),
     dim('out ') + bold(fmt(out)),
     cost === null ? '' : C('1;33') + '¥' + (cost >= 1 ? cost.toFixed(2) : cost.toFixed(3)) + R,
     dim(now),
   ]
-  process.stdout.write(parts.filter(Boolean).join(dim(' │ ')))
+  const plain = s => s.replace(/\x1b\[[\d;]*m/g, '') // ANSI costs no columns
+  const line = (w, detail) => render(w, detail).filter(Boolean).join(dim(' │ '))
+  // Claude Code sets COLUMNS to the terminal width. The bar is the whole point and
+  // the cache detail is a footnote, so spend the footnote first, then the bar --
+  // anything rather than wrap to a second row.
+  const cols = Number(process.env.COLUMNS) || 0
+  let barW = MAXW, detail = true
+  if (cols && plain(line(MAXW, true)).length > cols) {
+    detail = false
+    const noDetail = plain(line(MAXW, false)).length
+    if (noDetail > cols) barW = Math.max(0, Math.min(MAXW, MAXW - (noDetail - cols)))
+  }
+  process.stdout.write(line(barW, detail))
 })
