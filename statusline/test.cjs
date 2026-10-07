@@ -6,7 +6,8 @@ const fs = require('fs'), os = require('os'), path = require('path')
 
 const IDS = [
   'deepseek-flash', 'deepseek-flash[1m]',
-  'deepseek-v4.1-flash', 'deepseek-v4.1-flash-expires-on-0910[1m]',
+  'deepseek-v4.1-flash',
+  'deepseek-v4.1-flash-expires-on-0910', 'deepseek-v4.1-flash-expires-on-0910[1m]',
   'deepseek-v4-pro', 'glm-5.3-flash', 'qwen3.8-flash', 'mimo-v2.6-pro',
 ]
 const t = path.join(os.tmpdir(), 'statusline-test.jsonl')

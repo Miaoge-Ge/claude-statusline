@@ -7,12 +7,16 @@
 // rate for models not in PRICES; cache or reprice if that ever matters.
 const fs = require('fs')
 
-// deepseek peak rows are the published USD rates × USD_CNY: $0.006/$0.30/$1.20 per M
-// (deepseek-flash), $0.044/$1.32/$3.96 (v4-pro), off-peak exactly half.
+// Ids are matched literally -- one row per model id, nothing is folded together.
+// A renamed id is meant to show up as unpriced, and test.cjs fails until you add
+// it here, rather than quietly using another model's rate.
+// DeepSeek rows are the published USD rates × USD_CNY: $0.006/$0.30/$1.20 per M
+// for Flash, $0.044/$1.32/$3.96 for V4-Pro, off-peak exactly half.
 // ponytail: no Chinese-holiday calendar, so holidays are billed at peak rates here.
 const PRICES = {
   'deepseek-flash': peak => peak ? [0.0432, 2.16, 8.64] : [0.0216, 1.08, 4.32],
   'deepseek-v4.1-flash': peak => peak ? [0.0432, 2.16, 8.64] : [0.0216, 1.08, 4.32],
+  'deepseek-v4.1-flash-expires-on-0910': peak => peak ? [0.0432, 2.16, 8.64] : [0.0216, 1.08, 4.32],
   'deepseek-v4-pro': peak => peak ? [0.3168, 9.504, 28.512] : [0.1584, 4.752, 14.256],
   'qwen3.8-flash': [0.1, 0.8, 2.7],
   'glm-5.3-flash': [0.23, 0.8, 2.8],
@@ -60,10 +64,10 @@ process.stdin.on('end', () => {
   } catch {} // no transcript yet
 
   // cost in ¥: per-model price table, else the client's USD estimate converted.
-  // Look up id and display_name both, and drop DeepSeek's rotating name suffixes,
-  // otherwise a renamed model silently falls through to the client's estimate.
+  // `id` and `display_name` can disagree, so try both; the only thing stripped is
+  // the [1m] context marker, which is not part of the model name.
   const m = j.model || {}
-  const norm = s => (s || '').replace(/\[1m\]$/, '').replace(/-expires-on-\d+$/, '')
+  const norm = s => (s || '').replace(/\[1m\]$/, '')
   const id = [m.id, m.display_name].map(norm).find(k => PRICES[k]) || norm(m.display_name || m.id)
   const p = PRICES[id]
   let cost

@@ -1,30 +1,41 @@
 # claude-statusline
 
-Claude Code 用量状态栏，终端最底部一行：
+[中文](README.zh-CN.md) | English
+
+Claude Code usage status line — one line at the bottom of the terminal:
 
 ```
 glm-5.3-flash │ ██░░░░░░░░░░░░ 17% 34.2k/200k │ in 1.2M (cached 1.1M) │ out 45.3k │ ¥0.85 10-07 21:30
 ```
 
-- 上下文进度条：<50% 绿、<80% 黄、≥80% 红
-- 会话累计 token：输入（含缓存写入）/ 缓存命中 / 输出
-- 费用按 `PRICES` 表算（¥/百万 tokens），deepseek 按高峰时段（周一至五 UTC 01:00–04:00、06:00–10:00，其余时间半价）自动切换两档价；表外模型按美元估算 × `USD_CNY`（默认 7.2）兜底
-- 模型名会剥掉 `[1m]` 和 deepseek 的 `-expires-on-MMDD` 后缀再查表，改名了也不会静默掉到兜底
-- 每次交互结束刷新一次，无后台定时器
+- Context progress bar: green under 50%, yellow under 80%, red at or above.
+- Session totals: input (including cache writes) / cache hits / output.
+- Cost in ¥ from the `PRICES` table (¥ per 1M tokens). DeepSeek has two rate tiers: peak is Mon–Fri 01:00–04:00 and 06:00–10:00 UTC, off-peak is exactly half. Models that are not in the table fall back to the client's own USD estimate × `USD_CNY` (default 7.2).
+- Model ids are matched literally, one row per id — only the `[1m]` context marker is stripped. A renamed id shows up as unpriced rather than quietly borrowing another model's rate.
+- Redraws after every turn, plus once a minute so the clock stays current.
 
-## 安装
+## Install
+
+Requires Node.js.
 
 ```bash
 git clone https://github.com/Miaoge-Ge/claude-statusline && cd claude-statusline
 bash statusline/install.sh
 ```
 
-需要 Node.js。重跑即更新。
+Re-run it to update.
 
-## 卸载
+## Uninstall
 
-删掉 `~/.claude/settings.json` 里的 `"statusLine"`，再删 `~/.claude/statusline.cjs`。
+Delete `"statusLine"` from `~/.claude/settings.json` and remove `~/.claude/statusline.cjs`.
 
-## 自定义
+## Customize
 
-改 [statusline/statusline.cjs](statusline/statusline.cjs) 顶部 —— `PRICES`（格式 `[缓存命中, 输入, 输出]`，分时段的写成 `peak => peak ? [...] : [...]`）、`USD_CNY` 汇率、进度条宽度 `W = 14` 和颜色阈值。改完重跑 `bash statusline/install.sh`，或直接改 `~/.claude/statusline.cjs`。改完跑 `node statusline/test.cjs` 确认每个模型名都还能命中 `PRICES`。
+Edit the top of [statusline/statusline.cjs](statusline/statusline.cjs):
+
+- `PRICES` — `[cache-hit, cache-miss, output]` per 1M tokens. A row priced per time tier is written `peak => peak ? [...] : [...]`.
+- `USD_CNY` — the fallback conversion rate.
+- `W` — bar width, and the two colour thresholds just below it.
+- Refresh cadence lives in `~/.claude/settings.json` as `statusLine.refreshInterval`, in seconds.
+
+Then re-run `bash statusline/install.sh`, and `node statusline/test.cjs` to confirm every known model id still hits `PRICES`.

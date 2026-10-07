@@ -16,7 +16,7 @@ const home = os.homedir().replace(/\\/g, "/")
 const settingsPath = os.homedir() + "/.claude/settings.json"
 let s = {}
 try { s = JSON.parse(fs.readFileSync(settingsPath, "utf8")) } catch {}
-s.statusLine = { type: "command", command: `node "${home}/.claude/statusline.cjs"` }
+s.statusLine = { type: "command", command: `node "${home}/.claude/statusline.cjs"`, refreshInterval: 60 }
 fs.writeFileSync(settingsPath, JSON.stringify(s, null, 2) + "\n")
 console.log("Installed. statusLine -> " + settingsPath)
 console.log("Restart Claude Code (or send a message) to see it.")'
