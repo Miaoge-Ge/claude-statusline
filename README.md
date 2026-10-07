@@ -21,6 +21,12 @@ glm-5.3-flash │ ██░░░░░░░░░░░░ 17% 34.2k/200k │ 
 
 Requires Node.js.
 
+**By prompt** — paste this into Claude Code and it does the rest:
+
+> Install the status line: clone https://github.com/Miaoge-Ge/claude-statusline, then run `bash statusline/install.sh`. If Node.js is missing, install it first.
+
+**Manually**
+
 ```bash
 git clone https://github.com/Miaoge-Ge/claude-statusline && cd claude-statusline
 bash statusline/install.sh

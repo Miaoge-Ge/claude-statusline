@@ -21,6 +21,12 @@ glm-5.3-flash │ ██░░░░░░░░░░░░ 17% 34.2k/200k │ 
 
 需要 Node.js。
 
+**提示词安装** —— 把下面这句丢给 Claude Code，剩下的它来做：
+
+> 帮我安装状态栏：clone https://github.com/Miaoge-Ge/claude-statusline，然后跑 `bash statusline/install.sh`。没有 Node.js 就先装上。
+
+**手动安装**
+
 ```bash
 git clone https://github.com/Miaoge-Ge/claude-statusline && cd claude-statusline
 bash statusline/install.sh
